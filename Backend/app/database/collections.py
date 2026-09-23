@@ -1,0 +1,3 @@
+PRODUCTS_COLLECTION = "productos"
+CONVERSATIONS_COLLECTION = "conversations"
+ANALYTICS_COLLECTION = "analytics"
