@@ -1,0 +1,14 @@
+venv/
+__pycache__/
+*.pyc
+
+.env
+
+.vscode/
+.idea/
+
+.pytest_cache/
+
+credentials/firebase-service-account.json
+.mypy_cache/
+.pytest_cache/
