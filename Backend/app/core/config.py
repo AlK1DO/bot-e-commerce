@@ -7,6 +7,11 @@ load_dotenv()
 
 
 class Settings:
+    AI_PROVIDER = os.getenv("AI_PROVIDER", "none").strip().lower()
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+    GEMINI_MODEL = os.getenv("GEMINI_MODEL", "").strip()
+    GEMINI_TIMEOUT_SECONDS = float(os.getenv("GEMINI_TIMEOUT_SECONDS", "8"))
+
     APP_NAME = os.getenv(
         "APP_NAME",
         "Eagle Gaming Chatbot"

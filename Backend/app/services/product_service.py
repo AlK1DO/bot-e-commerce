@@ -1,5 +1,6 @@
 from app.repositories.product_repository import ProductRepository
 from app.domain.product_filters import ProductFilters
+from app.domain.search_normalizer import matches_search
 
 
 class ProductService:
@@ -70,22 +71,8 @@ class ProductService:
             if stock <= 0:
                 return False
 
-        if filters.texto:
-            search_text = filters.texto.lower().strip()
-
-            primary_content = " ".join([
-                str(product.get("titulo", "")),
-                str(product.get("marca", "")),
-                str(product.get("modelo", "")),
-                str(product.get("categoria", "")),
-                str(product.get("tarjeta_de_video", "")),
-                str(product.get("graficos", "")),
-                str(product.get("memoria_ram", "")),
-                str(product.get("procesador", ""))
-            ]).lower()
-
-            if search_text not in primary_content:
-                return False
+        if filters.texto and not matches_search(product, filters.texto):
+            return False
 
         return True
 

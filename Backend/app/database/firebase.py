@@ -12,7 +12,7 @@ def initialize_firebase():
         )
 
         firebase_admin.initialize_app(credential)
-
+    
 
 def get_firestore():
     initialize_firebase()

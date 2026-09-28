@@ -5,8 +5,9 @@ from pydantic import BaseModel
 class ProductSummary(BaseModel):
     id: str
     name: str
-    price: float
-    stock: int
+    summary: Optional[str] = None
+    price: Optional[float] = None
+    stock: Optional[int] = None
     image_url: Optional[str] = None
     product_url: Optional[str] = None
 
