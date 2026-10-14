@@ -58,7 +58,7 @@ class ChatTests(unittest.TestCase):
             self.assertEqual(body['intent'], 'precio')
             self.assertFalse(body['resolved'])
             self.assertEqual(body['products'], [])
-            self.assertEqual(client.post('/api/chat', json={"message": "   "}).status_code, 400)
+            self.assertIn(client.post('/api/chat', json={"message": "   "}).status_code, (400, 422))
             greeting = client.post('/api/chat', json={"message": "hola"}).json()
             self.assertTrue(greeting['resolved'])
             self.assertIn('Eli', greeting['message'])

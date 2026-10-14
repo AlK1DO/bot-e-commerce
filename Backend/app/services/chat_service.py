@@ -417,6 +417,21 @@ class ChatService:
         if not clean_message:
             raise ValueError("El mensaje no puede estar vacío.")
 
+        # ── 0. Bloqueo de prompt injection ────────────────────────────────────
+        if self.intent_service.is_injection_attempt(clean_message):
+            injection_resp = ChatResponse(
+                message=(
+                    "Soy Eli, la asesora de Eagle Gaming 😊 Solo puedo ayudarte con "
+                    "productos, precios, stock y envíos. ¿Qué equipo estás buscando?"
+                ),
+                intent=Intent.UNKNOWN.value,
+                resolved=False,
+                products=[],
+                quick_replies=["Laptops", "PCs Armadas", "Monitores", "Componentes"],
+            )
+            self._save_turn_to_db(session_id, clean_message, injection_resp, start_time, user_id)
+            return injection_resp
+
         # Recuperar historial para contexto
         history = [
             {"role": t.role, "text": t.text}
@@ -456,6 +471,27 @@ class ChatService:
         # ── 3. Detectar intención ──────────────────────────────────────────────
         intent = self.intent_service.detect_intent(clean_message)
         current_context = self.context_service.get_recommendation(session_id)
+
+        # ── 3a. Armar PC → redirige a la sección del sitio ────────────────────
+        if intent == Intent.BUILD_PC:
+            from app.core.config import settings
+            build_url = settings.BUILD_PC_URL
+            build_msg = (
+                f"¡Genial! 🛠️ Tenemos una sección especial para que armes tu PC ideal. "
+                f"Visita nuestra página **Arma tu PC** donde puedes elegir componentes "
+                f"compatibles, ver precios y configurar tu equipo a medida: {build_url} "
+                f"¿Te ayudo también a revisar el precio de algún componente en particular? 😊"
+            )
+            self.context_service.add_turn(session_id, "assistant", build_msg)
+            resp = ChatResponse(
+                message=build_msg,
+                intent=Intent.BUILD_PC.value,
+                resolved=True,
+                products=[],
+                quick_replies=["Ver procesadores", "Ver GPUs", "Ver memorias RAM", "Ver precios"],
+            )
+            self._save_turn_to_db(session_id, clean_message, resp, start_time, user_id)
+            return resp
 
         if intent == Intent.COMPARISON:
             resp = await self._compare_products(clean_message, history=history)

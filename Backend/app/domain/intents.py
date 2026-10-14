@@ -11,4 +11,5 @@ class Intent(StrEnum):
     RECOMMENDATION = "recomendacion"
     COMPARISON = "comparacion"
     PRODUCT_SEARCH = "buscar_producto"
+    BUILD_PC = "armar_pc"       # Redirige a la sección "Arma tu PC" de Eagle Gaming
     UNKNOWN = "desconocida"

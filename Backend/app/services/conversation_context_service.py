@@ -2,13 +2,18 @@
 
 No guarda DNI, direcciones ni otros datos personales. Se pierde al reiniciar la API.
 El historial se limita a los últimos MAX_HISTORY mensajes para evitar un contexto excesivo.
+Las sesiones sin actividad por más de SESSION_TTL_SECONDS se eliminan automáticamente
+para evitar consumo excesivo de memoria (protección ante muchas sesiones simultáneas).
 """
 
+import time
 from dataclasses import dataclass, field
 from typing import List
 
 
-MAX_HISTORY = 10  # Cuántos turnos se mantienen en memoria por sesión
+MAX_HISTORY = 10          # Turnos máximos por sesión en memoria
+SESSION_TTL_SECONDS = 1800  # 30 minutos de inactividad → se descarta la sesión
+MAX_SESSIONS = 2000         # Si se supera este número se hace limpieza agresiva
 
 
 @dataclass
@@ -28,19 +33,50 @@ class SessionContext:
     recommendation: RecommendationContext = field(default_factory=RecommendationContext)
     history: List[MessageTurn] = field(default_factory=list)
     last_product_query: str | None = None
+    last_active: float = field(default_factory=time.monotonic)
 
 
 class ConversationContextService:
     def __init__(self):
         self._sessions: dict[str, SessionContext] = {}
 
+    # ─── Limpieza por TTL ──────────────────────────────────────────────────────
+
+    def _evict_expired(self) -> None:
+        """Elimina sesiones inactivas. Se llama en cada acceso para evitar hilo extra."""
+        now = time.monotonic()
+        expired = [
+            sid for sid, ctx in self._sessions.items()
+            if now - ctx.last_active > SESSION_TTL_SECONDS
+        ]
+        for sid in expired:
+            del self._sessions[sid]
+
+        # Limpieza agresiva si se superó el máximo: elimina las más antiguas
+        if len(self._sessions) > MAX_SESSIONS:
+            sorted_by_age = sorted(self._sessions.items(), key=lambda x: x[1].last_active)
+            to_remove = len(self._sessions) - MAX_SESSIONS
+            for sid, _ in sorted_by_age[:to_remove]:
+                del self._sessions[sid]
+
     # ─── Helpers ───────────────────────────────────────────────────────────────
 
     def _get_session(self, session_id: str | None) -> SessionContext | None:
-        return self._sessions.get(session_id) if session_id else None
+        if not session_id:
+            return None
+        self._evict_expired()
+        session = self._sessions.get(session_id)
+        if session:
+            session.last_active = time.monotonic()
+        return session
 
     def _get_or_create_session(self, session_id: str) -> SessionContext:
-        return self._sessions.setdefault(session_id, SessionContext())
+        self._evict_expired()
+        if session_id not in self._sessions:
+            self._sessions[session_id] = SessionContext()
+        session = self._sessions[session_id]
+        session.last_active = time.monotonic()
+        return session
 
     # ─── Historial ─────────────────────────────────────────────────────────────
 
@@ -54,7 +90,6 @@ class ConversationContextService:
             session.history = session.history[-MAX_HISTORY:]
 
     def get_history(self, session_id: str | None) -> List[MessageTurn]:
-        """Devuelve el historial de mensajes de la sesión (puede estar vacío)."""
         session = self._get_session(session_id)
         return session.history if session else []
 
