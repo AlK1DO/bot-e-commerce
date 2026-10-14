@@ -33,6 +33,7 @@ class SessionContext:
     recommendation: RecommendationContext = field(default_factory=RecommendationContext)
     history: List[MessageTurn] = field(default_factory=list)
     last_product_query: str | None = None
+    last_products: list[dict] = field(default_factory=list)
     last_active: float = field(default_factory=time.monotonic)
 
 
@@ -104,6 +105,16 @@ class ConversationContextService:
     def get_last_product_query(self, session_id: str | None) -> str | None:
         session = self._get_session(session_id)
         return session.last_product_query if session else None
+
+    def set_last_products(self, session_id: str | None, products: list[dict]) -> None:
+        if not session_id or not products:
+            return
+        session = self._get_or_create_session(session_id)
+        session.last_products = products[:5]
+
+    def get_last_products(self, session_id: str | None) -> list[dict]:
+        session = self._get_session(session_id)
+        return session.last_products if session else []
 
     # ─── Contexto de recomendación ─────────────────────────────────────────────
 

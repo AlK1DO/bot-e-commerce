@@ -130,6 +130,8 @@ class ChatService:
         if session_id:
             self.context_service.set_last_product_query(session_id, query)
         shown_products = products[:5]
+        if session_id and shown_products:
+            self.context_service.set_last_products(session_id, shown_products)
         summaries = [self._to_product_summary(p) for p in shown_products]
         multiple = len(products) > 1
 
@@ -283,9 +285,11 @@ class ChatService:
 
     # ─── Recomendación de procesadores ─────────────────────────────────────────
 
-    def _recommend_processors(self, message: str) -> ChatResponse:
+    def _recommend_processors(self, message: str, session_id: str | None = None) -> ChatResponse:
         self._ensure_product_service()
         options = RecommendationService(self.product_service).processor_options(message)
+        if session_id and options:
+            self.context_service.set_last_products(session_id, options)
         summaries = [self._to_product_summary(p) for p in options]
         summaries = [p for p in summaries if p.stock is None or p.stock > 0]
         msg = (
@@ -302,11 +306,80 @@ class ChatService:
             quick_replies=["Tengo placa AM4", "Tengo placa LGA1700", "Presupuesto S/ 800", "Presupuesto S/ 1500"],
         )
 
+    # ─── Recomendación sobre productos recién mostrados ────────────────────────
+
+    async def _recommend_between_last_products(
+        self,
+        message: str,
+        session_id: str | None,
+        last_products: list[dict],
+        history: list[dict] | None = None,
+    ) -> ChatResponse:
+        """Compara y recomienda entre los productos específicos que el bot acaba de mostrar al usuario."""
+        summaries = [self._to_product_summary(p) for p in last_products]
+
+        # Intentar síntesis con Gemini si está configurado
+        natural_msg = None
+        if hasattr(self.llm_service, "generate_response"):
+            products_context = [
+                {
+                    "nombre": p.get("titulo") or "Producto sin título",
+                    "precio": p.get("precio"),
+                    "stock": p.get("stock"),
+                    "garantia": p.get("garantia"),
+                    "pantalla": p.get("pantalla"),
+                    "caracteristicas": self._product_summary(p),
+                }
+                for p in last_products
+            ]
+            try:
+                gen_call = self.llm_service.generate_response(
+                    user_message=f"El cliente pregunta entre los productos que le acabas de mostrar: '{message}'. Recomienda cuál le conviene comparando sus ventajas principales de forma concisa y vendedora.",
+                    intent="recomendacion",
+                    products_context=products_context,
+                    history=history,
+                )
+                import inspect
+                res = await gen_call if inspect.isawaitable(gen_call) else gen_call
+                natural_msg = res if isinstance(res, str) and res.strip() else None
+            except Exception:
+                natural_msg = None
+
+        if not natural_msg:
+            # Fallback inteligente local
+            if len(summaries) >= 2:
+                p1, p2 = summaries[0], summaries[1]
+                pr1 = f"S/ {p1.price:,.2f}" if p1.price else "precio por confirmar"
+                pr2 = f"S/ {p2.price:,.2f}" if p2.price else "precio por confirmar"
+                natural_msg = (
+                    f"¡Ambas opciones que te mostré son excelentes alternativas! 🎮\n\n"
+                    f"• **{p1.name}** ({pr1}): Gran opción si buscas el mejor balance de características y precio.\n"
+                    f"• **{p2.name}** ({pr2}): Ideal si se ajusta a tus necesidades específicas o presupuesto.\n\n"
+                    f"¿Cuál de las dos opciones te convence más para darte más detalles? 😊"
+                )
+            elif summaries:
+                p = summaries[0]
+                pr = f"S/ {p.price:,.2f}" if p.price else ""
+                natural_msg = f"¡Te recomiendo totalmente **{p.name}** {pr}! Es una opción muy completa con garantía oficial. ¿Deseas consultar stock o métodos de pago? 🛒"
+            else:
+                natural_msg = "Ambas son muy buenas opciones de nuestra tienda. ¿Tienes algún presupuesto límite para ayudarte a elegir?"
+
+        return ChatResponse(
+            message=natural_msg,
+            intent=Intent.RECOMMENDATION.value,
+            resolved=True,
+            products=summaries,
+            quick_replies=["¿Cómo se paga?", "¿Tienen garantía?", "¿Hacen envíos a provincia?"],
+        )
+
     # ─── Parseo de contexto para recomendación ──────────────────────────────────
 
     @staticmethod
     def _recommendation_choice(message: str) -> str | None:
         text = normalize_search(message)
+        # Si el usuario dice "no busco pc ni laptop", "no quiero laptop", etc., no asociar
+        if re.search(r"\bno\s+(?:busco|quiero|necesito|es|estoy\s+pidiendo|hablo|hablando)\b.*\b(laptop|pc|computadora)\b", text):
+            return None
         laptop = "laptop" in text
         pc = "pc" in text or "computadora" in text
         if laptop and pc:
@@ -489,10 +562,10 @@ class ChatService:
             from app.core.config import settings
             build_url = settings.BUILD_PC_URL
             build_msg = (
-                f"¡Genial! 🛠️ Tenemos una sección especial para que armes tu PC ideal. "
-                f"Visita nuestra página **Arma tu PC** donde puedes elegir componentes "
-                f"compatibles, ver precios y configurar tu equipo a medida: {build_url} "
-                f"¿Te ayudo también a revisar el precio de algún componente en particular? 😊"
+                f"¡Genial! 🛠️ Tenemos una sección especial para que armes tu PC ideal a tu medida:\n\n"
+                f"👉 [Abrir sección 'Arma tu PC']({build_url})\n\n"
+                f"Allí podrás elegir componentes compatibles, ver precios en tiempo real y armar tu presupuesto paso a paso. "
+                f"¿Te ayudo también a revisar el precio o características de algún componente en particular? 😊"
             )
             self.context_service.add_turn(session_id, "assistant", build_msg)
             resp = ChatResponse(
@@ -500,7 +573,7 @@ class ChatService:
                 intent=Intent.BUILD_PC.value,
                 resolved=True,
                 products=[],
-                quick_replies=["Ver procesadores", "Ver GPUs", "Ver memorias RAM", "Ver precios"],
+                quick_replies=["👉 Ir a Arma tu PC", "Ver procesadores", "Ver tarjetas de video", "Ver memorias RAM"],
             )
             self._save_turn_to_db(session_id, clean_message, resp, start_time, user_id)
             return resp
@@ -530,18 +603,30 @@ class ChatService:
             self._save_turn_to_db(session_id, clean_message, resp, start_time, user_id)
             return resp
 
+        # ── 3c. Recomendación o comparativa de productos recién mostrados ─────
+        last_products = self.context_service.get_last_products(session_id)
+        is_follow_up = bool(re.search(
+            r"\b(de\s+(?:esos|estos|ellos)|cual\s+(?:me\s+)?(?:recomiendas|conviene|es\s+mejor)|cual\s+elijo|entre\s+(?:esos|estos)|diferencia\s+entre\s+(?:esos|estos))\b",
+            normalize_search(clean_message),
+        ))
+        if last_products and (is_follow_up or (intent == Intent.RECOMMENDATION and not self._recommendation_choice(clean_message))):
+            resp = await self._recommend_between_last_products(clean_message, session_id, last_products, history=history)
+            self.context_service.add_turn(session_id, "assistant", resp.message)
+            self._save_turn_to_db(session_id, clean_message, resp, start_time, user_id)
+            return resp
+
         if intent == Intent.COMPARISON:
             resp = await self._compare_products(clean_message, history=history)
             self.context_service.add_turn(session_id, "assistant", resp.message)
             self._save_turn_to_db(session_id, clean_message, resp, start_time, user_id)
             return resp
 
-        # ── 3c. Procesadores específicos ──────────────────────────────────────
+        # ── 3d. Procesadores específicos ──────────────────────────────────────
         if is_processor_request(clean_message) and (
             intent in {Intent.RECOMMENDATION, Intent.PRODUCT_SEARCH, Intent.UNKNOWN}
             or re.search(r'\b(juego\w*|jugar|gaming|gamer|software|trabajo|estudio)\b', clean_message.lower())
         ):
-            resp = self._recommend_processors(clean_message)
+            resp = self._recommend_processors(clean_message, session_id=session_id)
             self.context_service.add_turn(session_id, "assistant", resp.message)
             self._save_turn_to_db(session_id, clean_message, resp, start_time, user_id)
             return resp
