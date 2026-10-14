@@ -20,7 +20,10 @@ class LLMService:
     def __init__(self, provider: BaseProvider | None = None):
         self.provider = provider
 
-    def _ensure_provider(self):
+    def _get_provider(self) -> BaseProvider:
+        """Devuelve el proveedor de IA activo o inicializa Gemini si está configurado.
+        Garantiza un tipo BaseProvider no nulo para evitar errores de análisis estático.
+        """
         if self.provider is None:
             if settings.AI_PROVIDER != "gemini":
                 raise ProviderError("Proveedor de IA no soportado.")
@@ -30,6 +33,7 @@ class LLMService:
                 settings.GEMINI_MODEL,
                 settings.GEMINI_TIMEOUT_SECONDS,
             )
+        return self.provider
 
     async def interpret(
         self,
@@ -47,9 +51,10 @@ class LLMService:
         if self.provider is None and settings.AI_PROVIDER == "none":
             return None
         try:
-            self._ensure_provider()
-            gen_res = self.provider.generate_json(
-                PromptService.interpretation_prompt(history), message,
+            provider = self._get_provider()
+            gen_res = provider.generate_json(
+                PromptService.interpretation_prompt(history),
+                message,
                 Interpretation.model_json_schema(),
             )
             raw = await gen_res if inspect.isawaitable(gen_res) else gen_res
@@ -74,14 +79,13 @@ class LLMService:
         if self.provider is None and settings.AI_PROVIDER == "none":
             return None
         try:
-            self._ensure_provider()
-            from unittest.mock import Mock
+            provider = self._get_provider()
             system_prompt = PromptService.natural_sales_prompt(
                 intent=intent,
                 products=products_context,
                 history=history,
             )
-            res = self.provider.generate_text(
+            res = provider.generate_text(
                 system=system_prompt,
                 message=user_message,
             )
