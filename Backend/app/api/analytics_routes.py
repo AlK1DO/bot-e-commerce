@@ -59,7 +59,7 @@ def export_metrics(
     request: Request,
     x_api_key: str = Header(default=""),
     api_key: Optional[str] = Query(default=None),
-    format: str = Query(default="csv", regex="^(csv)$"),
+    format: str = Query(default="csv", pattern="^(csv)$"),
 ):
     """Descarga los datos completos de las interacciones en formato CSV (Solo Administrador / Tesistas).
     
