@@ -1,91 +1,146 @@
-# Eagle Gaming Perú — Backend
+# Eagle Gaming Perú — Backend del Chatbot Inteligente ("Eli")
 
-## Página de pruebas
+Sistema de atención automatizada y recomendación personalizada de productos tecnológicos para la tienda de comercio electrónico **Eagle Gaming Perú**, desarrollado con **Python 3.12, FastAPI, Google Gemini API y Google Cloud Firestore**.
 
-Con el servidor iniciado, abre http://127.0.0.1:8000/preview/.
-El frontend pequeño está en `preview/` y utiliza `/api/chat` en el mismo servidor.
-No requiere npm ni dependencias adicionales. Incluye el logo proporcionado,
-productos, estado de la consulta y manejo de errores. Cada envío puede consumir
-una llamada a Gemini; los botones de ejemplo solo rellenan el mensaje.
-La página no añade memoria conversacional ni confirma que haya respondido la IA:
-el backend puede utilizar sus reglas locales si el proveedor falla.
+---
 
-Python 3.12.10, FastAPI y Firestore. Ejecutar desde `Backend` con el entorno
-virtual y la configuración de Firebase disponibles:
+## 🎯 Alineación con los Objetivos de la Tesis
 
+| Objetivo de la Tesis | Implementación en el Backend |
+|---|---|
+| **Obj. 1: Tiempos y orientación** | Medición automática de `response_time_ms` por cada turno conversacional. Registro histórico en Firestore. |
+| **Obj. 2: Arquitectura y flujos** | Clasificación híbrida de intenciones (Reglas deterministas locales + LLM Gemini en fallback), soporte comercial de envíos/pagos/garantías, comparativa de productos y derivación a asesor humano por WhatsApp (`986 638 034`). |
+| **Obj. 3: Recomendación personalizada** | Búsqueda y filtrado en catálogo real por presupuesto (`S/ 2500`, rangos `entre 2000 y 3500`), categoría (Laptops, PCs armadas, componentes), resolución de pronombres contextuales ("¿y ese tiene garantía?") y enlace directo a **"Arma tu PC"** (`/arma-tu-pc`). |
+| **Obj. 4: Indicadores de evaluación** | Endpoint `/api/analytics/summary` con los 3 indicadores clave: **Tiempo de respuesta**, **Tasa de resolución** y **Satisfacción de usuarios (CSAT)** mediante `/api/chat/feedback`. Exportación a CSV para análisis estadístico en Excel/SPSS. |
+
+---
+
+## 🚀 Inicio Rápido
+
+### 1. Requisitos
+- Python 3.12+
+- Credenciales de Firebase en `credentials/firebase-service-account.json`
+- Archivo `.env` configurado (ver `.env.example`)
+
+### 2. Instalación de dependencias
+```powershell
+pip install -r requirements.txt
+```
+
+### 3. Ejecutar el servidor
 ```powershell
 .\venv\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
+- API Base: `http://localhost:8000`
+- Documentación interactiva (Swagger UI): `http://localhost:8000/docs` *(activa solo en `APP_ENV=development`)*
 
-## Chat y catálogo
-
-`POST /api/chat` recibe `message` y un `session_id` opcional. Por ejemplo:
-
-```json
-{"message": "¿Cuánto cuesta la laptop Lenovo?"}
-```
-
-El chat clasifica una intención principal por reglas locales y consulta
-`productos` mediante ProductService. Precios, disponibilidad, características
-y garantías se redactan directamente a partir del catálogo, sin un modelo de IA.
-Se muestran como máximo cinco productos y se solicita precisar la búsqueda si
-hay más coincidencias. Un campo ausente no se interpreta como cero ni como
-disponibilidad confirmada.
-
-En `products`, `price` y `stock` pueden ser `null`. El frontend debe representar
-ese valor como información no disponible. `resolved` es false cuando falta la
-información solicitada, no hay resultados o se requiere precisar la consulta.
-Las URLs se toman del campo `url`; no se infieren imágenes desde `url1/2/3`.
-
-La búsqueda admite consultas técnicas simples. Aún no resuelve referencias como
-“ese producto”, no guarda historial ni usa `session_id` para mantener contexto.
-La extracción por reglas no equivale a comprensión general del lenguaje.
-Recomendaciones y métricas continúan pendientes.
-
-## Información comercial
-
-Las respuestas de envíos, recojo, horarios, ubicaciones, pagos y datos de
-entrega se mantienen separadas del catálogo en
-`app/domain/commercial_information.py`. Esta es una base de conocimiento
-controlada: no usa Gemini ni Firestore y por ello no inventa condiciones.
-Los datos operativos internos de embalaje no se presentan al cliente.
-
-Antes de publicar una política de pagos o una dirección exacta, completa los
-datos marcados como pendientes en ese archivo. Los datos personales se solicitan
-solamente en un checkout autenticado; el chat no debe recibir DNI.
-
-## Gemini (fase 8)
-
-Agregar en `.env` (no subir claves al repositorio):
-
-```dotenv
-AI_PROVIDER=gemini
-GEMINI_API_KEY=tu_clave
-GEMINI_MODEL=id_del_modelo_de_tu_cuenta
-GEMINI_TIMEOUT_SECONDS=8
-```
-
-Seleccionar un modelo compatible con generateContent y salida JSON en Google
-AI Studio. Reiniciar la API después de cambiar estas variables. `AI_PROVIDER=none`
-desactiva las llamadas a IA. Si falta configuración o falla el proveedor, se usan
-reglas locales y se registra un aviso sin claves ni mensajes del cliente.
-
-`LLMService` es el único punto de acceso del chat a la IA. `GeminiProvider` usa
-la API REST con `httpx`, ya incluido en requirements.txt, y un timeout de 20 s.
-Las consultas comerciales, saludos y búsquedas simples se resuelven sin llamar
-a Gemini. Gemini recibe los mensajes ambiguos o recomendaciones para extraer intención y términos de
-búsqueda mediante JSON validado con Pydantic. No recibe credenciales de Firebase
-ni el catálogo. Los datos comerciales se redactan desde Firestore, no desde la IA.
-Esto no incorpora todavía memoria de conversación ni recomendaciones por IA.
-
-Implementación del proveedor en `app/ai/providers/gemini_provider.py`.
-El archivo vacío previo `geminni_provider.py` no se utiliza.
-Referencia: https://ai.google.dev/api/generate-content
-
-## Pruebas locales
-
-No necesitan Firebase ni claves de IA:
-
+### 4. Ejecutar la suite completa de pruebas unitarias
 ```powershell
-.\venv\Scripts\python.exe -m unittest discover -s test
+.\venv\Scripts\python.exe -m unittest discover -s test -v
 ```
+*(40 pruebas unitarias automatizadas cubren contratos de API, intents, filtros de catálogo, seguridad, rate limiting y persistencia).*
+
+---
+
+## 📡 Contrato de Endpoints de la API
+
+### 1. Chatbot (`/api/chat`)
+
+#### `POST /api/chat`
+Procesa un mensaje del usuario. Rate limit: **20 req/min por IP**.
+- **Request Body:**
+  ```json
+  {
+    "message": "Recomiéndame una laptop gamer por 3500 soles",
+    "session_id": "sesion-uuid-1234",
+    "user_id": "usr-5678"
+  }
+  ```
+- **Response (200 OK):**
+  ```json
+  {
+    "message": "¡Aquí tienes excelentes opciones dentro de tu presupuesto! ...",
+    "intent": "recomendacion",
+    "resolved": true,
+    "products": [
+      {
+        "id": "prod-1",
+        "name": "Laptop Lenovo Legion 5",
+        "summary": "Ryzen 7 · 16GB RAM · RTX 4060",
+        "price": 3499.0,
+        "stock": 5,
+        "product_url": "https://eaglegaming.pe/producto/lenovo-legion-5"
+      }
+    ],
+    "quick_replies": ["¿Cómo se paga?", "¿Tienen garantía?", "Ver PCs armadas"],
+    "response_time_ms": 284.5
+  }
+  ```
+
+#### `GET /api/chat/history/{session_id}?limit=50`
+Recupera el historial previo de mensajes para restaurar la conversación cuando el usuario vuelve o inicia sesión. Rate limit: **10 req/min**.
+
+#### `POST /api/chat/feedback`
+Registra la calificación de satisfacción del cliente (1 a 5 estrellas). Permite evaluar el **Objetivo 4** de la tesis.
+- **Request Body:**
+  ```json
+  {
+    "session_id": "sesion-uuid-1234",
+    "rating": 5,
+    "comment": "Muy rápida y acertada la recomendación",
+    "user_id": "usr-5678"
+  }
+  ```
+
+---
+
+### 2. Catálogo de Productos (`/api/products`)
+
+- **`GET /api/products`**: Búsqueda con filtros (`categoria`, `marca`, `precio_min`, `precio_max`, `solo_stock`, `texto`). Rate limit: **60 req/min**.
+- **`GET /api/products/{id}`**: Detalle de un producto individual por ID.
+
+---
+
+### 3. Administración y Métricas de Tesis (`/api/analytics`)
+*(Protegidos mediante header `X-Api-Key` o parámetro `?api_key=dev-only`)*
+
+#### `GET /api/analytics/summary`
+Retorna el consolidado de métricas evaluativas:
+```json
+{
+  "total_messages": 128,
+  "resolved_count": 115,
+  "resolution_rate_pct": 89.8,
+  "avg_response_time_ms": 312.4,
+  "min_response_time_ms": 45.2,
+  "max_response_time_ms": 820.1,
+  "top_intents": [
+    {"intent": "precio", "count": 42},
+    {"intent": "recomendacion", "count": 31},
+    {"intent": "disponibilidad", "count": 25}
+  ],
+  "satisfaction": {
+    "total_ratings": 38,
+    "avg_rating_stars": 4.76,
+    "satisfaction_rate_pct": 94.7,
+    "stars_breakdown": {"1": 0, "2": 1, "3": 1, "4": 8, "5": 28}
+  }
+}
+```
+
+#### `GET /api/analytics/export?api_key=dev-only`
+Descarga directa del archivo **`metricas_chatbot_eagle_gaming.csv`** con cada turno conversacional registrado, tiempos, intents, y calificaciones para procesar en SPSS o Excel.
+
+#### `DELETE /api/analytics/cleanup?days=30&api_key=dev-only`
+Purga sesiones con más de N días de antigüedad para mantener el almacenamiento de Firestore dentro de los límites gratuitos.
+
+---
+
+## 🛡️ Seguridad Implementada
+
+1. **Security Headers Middleware:** `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection: 1; mode=block`, `Referrer-Policy: strict-origin-when-cross-origin`, `Server: EagleGaming-API`.
+2. **Anti-XSS:** Sanitización estricta de tags HTML (`<script>`, `<iframe>`, `<img>`) en mensajes y comentarios.
+3. **Rate Limiting:** Control de tráfico por IP con `slowapi` en todos los endpoints públicos.
+4. **Anti-Prompt-Injection:** Pre-filtro determinista por patrones maliciosos y cláusulas de instrucción no confiable en el prompt del sistema.
+5. **Aislamiento de Errores:** Manejador global 500 para evitar fugas de stack traces o rutas locales del sistema operativo.
+6. **Ocultamiento de Swagger en Producción:** `/docs` se desactiva cuando `APP_ENV=production`.
