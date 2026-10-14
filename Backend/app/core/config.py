@@ -22,6 +22,9 @@ class Settings:
     # Cuando el chatbot detecta que el usuario quiere armar una PC, redirige aquí.
     BUILD_PC_URL = os.getenv("BUILD_PC_URL", "/arma-tu-pc")
 
+    # Número de WhatsApp para soporte y derivación a asesor humano (Perú +51)
+    WHATSAPP_NUMBER = os.getenv("WHATSAPP_NUMBER", "51986638034")
+
     FIREBASE_CREDENTIALS_PATH = os.getenv(
         "FIREBASE_CREDENTIALS_PATH",
         "credentials/firebase-service-account.json"

@@ -1,6 +1,8 @@
-from datetime import datetime, timezone
-from typing import Any
+import csv
+import io
 import logging
+from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from app.database.collections import CONVERSATIONS_COLLECTION
 from app.database.firebase import get_firestore
@@ -71,6 +73,42 @@ class ConversationRepository:
             logging.getLogger(__name__).warning("Error guardando conversación en Firestore: %s", error)
             return False
 
+    def save_feedback(
+        self,
+        session_id: str,
+        rating: int,
+        comment: str | None = None,
+        user_id: str | None = None,
+    ) -> bool:
+        """Registra la calificación de satisfacción del cliente (1 a 5 estrellas).
+        Responde directamente al indicador de 'satisfacción de los usuarios' del
+        Objetivo Específico 4 de la tesis.
+        """
+        if not session_id:
+            return False
+
+        db = self._get_db()
+        if not db:
+            return False
+
+        try:
+            timestamp = datetime.now(timezone.utc).isoformat()
+            doc_ref = db.collection(CONVERSATIONS_COLLECTION).document(session_id)
+
+            feedback_data = {
+                "rating": rating,
+                "comment": comment,
+                "timestamp": timestamp,
+            }
+            if user_id:
+                feedback_data["user_id"] = user_id
+
+            doc_ref.set({"feedback": feedback_data, "last_updated": timestamp}, merge=True)
+            return True
+        except Exception as error:
+            logging.getLogger(__name__).warning("Error guardando feedback en Firestore: %s", error)
+            return False
+
     def get_messages(self, session_id: str, limit: int = 50) -> list[dict[str, Any]]:
         """Recupera el historial de mensajes de una sesión (más recientes primero).
         Usado por GET /api/chat/history/{session_id} para que el frontend muestre
@@ -99,9 +137,10 @@ class ConversationRepository:
 
     def get_analytics_summary(self) -> dict[str, Any]:
         """Agrega métricas de todos los mensajes guardados para el endpoint de analytics.
-        Responde al Objetivo Específico 4 de la tesis: evaluar tiempo de respuesta,
-        resolución de consultas e intents más frecuentes.
-        Nota: usa un scan completo; aceptable para volumen de tesis (<10k msgs).
+        Responde integralmente al Objetivo Específico 4 de la tesis:
+        1. Tiempo de respuesta (avg, min, max ms)
+        2. Resolución de consultas (total, resueltas, porcentaje)
+        3. Satisfacción de los usuarios (promedio estrellas, porcentaje satisfacción positiva)
         """
         db = self._get_db()
         if not db:
@@ -114,8 +153,22 @@ class ConversationRepository:
             resolved_count = 0
             response_times: list[float] = []
             intent_counts: dict[str, int] = {}
+            ratings: list[int] = []
+            rating_counts = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
 
             for session_doc in sessions:
+                s_data = session_doc.to_dict() or {}
+
+                # Feedback de satisfacción
+                feedback = s_data.get("feedback")
+                if feedback and isinstance(feedback, dict):
+                    r = feedback.get("rating")
+                    if isinstance(r, (int, float)) and 1 <= int(r) <= 5:
+                        int_r = int(r)
+                        ratings.append(int_r)
+                        rating_counts[int_r] = rating_counts.get(int_r, 0) + 1
+
+                # Mensajes de la subcolección
                 messages_ref = (
                     db.collection(CONVERSATIONS_COLLECTION)
                     .document(session_doc.id)
@@ -145,6 +198,18 @@ class ConversationRepository:
                 if total_messages else 0.0
             )
 
+            # Métricas de satisfacción del usuario (Objetivo 4)
+            avg_satisfaction = (
+                round(sum(ratings) / len(ratings), 2)
+                if ratings else 0.0
+            )
+            # Satisfacción positiva (4 o 5 estrellas)
+            positive_ratings = sum(1 for r in ratings if r >= 4)
+            satisfaction_pct = (
+                round(positive_ratings / len(ratings) * 100, 1)
+                if ratings else 0.0
+            )
+
             # Top 5 intents
             top_intents = sorted(intent_counts.items(), key=lambda x: x[1], reverse=True)[:5]
 
@@ -156,7 +221,120 @@ class ConversationRepository:
                 "min_response_time_ms": round(min(response_times), 2) if response_times else 0.0,
                 "max_response_time_ms": round(max(response_times), 2) if response_times else 0.0,
                 "top_intents": [{"intent": k, "count": v} for k, v in top_intents],
+                # Indicadores de satisfacción de usuario (CSAT)
+                "satisfaction": {
+                    "total_ratings": len(ratings),
+                    "avg_rating_stars": avg_satisfaction,
+                    "satisfaction_rate_pct": satisfaction_pct,
+                    "stars_breakdown": rating_counts,
+                },
             }
         except Exception as error:
             logging.getLogger(__name__).warning("Error generando analytics: %s", error)
+            return {"error": str(error)}
+
+    def export_metrics_csv(self) -> str:
+        """Genera un archivo CSV con el detalle de todas las interacciones registradas.
+        Permite a los tesistas / administradores importar los datos directos a
+        Excel, SPSS o PowerBI para elaborar las tablas y figuras de la tesis.
+        """
+        db = self._get_db()
+        if not db:
+            return "error\nFirestore no disponible"
+
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow([
+            "session_id",
+            "timestamp",
+            "intent",
+            "resolved",
+            "response_time_ms",
+            "user_message",
+            "assistant_message",
+            "feedback_rating",
+            "feedback_comment",
+        ])
+
+        try:
+            sessions = db.collection(CONVERSATIONS_COLLECTION).stream()
+            for session_doc in sessions:
+                s_data = session_doc.to_dict() or {}
+                feedback = s_data.get("feedback") or {}
+                fb_rating = feedback.get("rating", "")
+                fb_comment = feedback.get("comment", "")
+
+                messages_ref = (
+                    db.collection(CONVERSATIONS_COLLECTION)
+                    .document(session_doc.id)
+                    .collection("messages")
+                    .order_by("timestamp")
+                    .stream()
+                )
+                for msg in messages_ref:
+                    m = msg.to_dict()
+                    writer.writerow([
+                        session_doc.id,
+                        m.get("timestamp", ""),
+                        m.get("intent", ""),
+                        "SI" if m.get("resolved") else "NO",
+                        m.get("response_time_ms", ""),
+                        m.get("user_message", "").replace("\n", " "),
+                        m.get("assistant_message", "").replace("\n", " "),
+                        fb_rating,
+                        fb_comment.replace("\n", " "),
+                    ])
+
+            return output.getvalue()
+        except Exception as error:
+            logging.getLogger(__name__).warning("Error exportando métricas CSV: %s", error)
+            return f"error\n{error}"
+
+    def cleanup_old_conversations(self, days: int = 30) -> dict[str, Any]:
+        """Elimina sesiones inactivas más antiguas de N días en Firestore.
+        Evita saturar el límite de almacenamiento gratuito de Firebase.
+        """
+        db = self._get_db()
+        if not db:
+            return {"error": "Firestore no disponible"}
+
+        if days < 1:
+            days = 1
+
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
+        cutoff_iso = cutoff_date.isoformat()
+
+        deleted_sessions = 0
+        deleted_messages = 0
+
+        try:
+            sessions = db.collection(CONVERSATIONS_COLLECTION).stream()
+            for session_doc in sessions:
+                data = session_doc.to_dict() or {}
+                last_updated = data.get("last_updated") or ""
+
+                if last_updated and last_updated < cutoff_iso:
+                    # Borrar subcolección de mensajes primero
+                    msgs = (
+                        db.collection(CONVERSATIONS_COLLECTION)
+                        .document(session_doc.id)
+                        .collection("messages")
+                        .stream()
+                    )
+                    for m in msgs:
+                        m.reference.delete()
+                        deleted_messages += 1
+
+                    # Borrar documento de sesión
+                    session_doc.reference.delete()
+                    deleted_sessions += 1
+
+            return {
+                "status": "ok",
+                "days_threshold": days,
+                "deleted_sessions": deleted_sessions,
+                "deleted_messages": deleted_messages,
+            }
+        except Exception as error:
+            logging.getLogger(__name__).warning("Error durante purga de conversaciones: %s", error)
             return {"error": str(error)}

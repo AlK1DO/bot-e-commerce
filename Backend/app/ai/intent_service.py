@@ -55,6 +55,7 @@ class IntentService:
 
     # Una intención principal por mensaje. El orden resuelve consultas mixtas.
     RULES = (
+        (Intent.HUMAN_SUPPORT,   r"\b(asesor(?:a|es|as)?|humanos?|personas?|agentes?|soporte|whatsapp|wsp|contacto|telefono|celular|llamar)\b|\b(?:hablar|comunicar\w*)\s+con\s+(?:un|una|alguien|humano|asesor)\b|\batencion\s+al\s+cliente\b"),
         (Intent.COMMERCIAL_INFO, r"\b(envio\w*|despacho\w*|delivery|recojo\w*|retiro|horario\w*|ubicacion\w*|direccion\w*|sector|paqueteria\w*|courier|dni|mercado libre|olva|flex)\b"),
         (Intent.BUILD_PC,        r"\b(arma\w*\s+(?:tu|mi|una|su)\s+pc|armar\s+pc|como\s+armar|armo\s+mi\s+pc|pc\s+personaliz\w*|configura\w*\s+pc|construi\w*\s+pc|quiero\s+armar|ensambla\w*)\b"),
         (Intent.COMPARISON,      r"\b(compara\w*|diferencia\w*|vs|versus)\b|\bcual es mejor\b|\bque me conviene mas\b"),
@@ -62,7 +63,7 @@ class IntentService:
         (Intent.RECOMMENDATION,  r"\b(recomienda\w*|recomendacion\w*|aconseja\w*|presupuesto)\b|\bcual me conviene\b"),
         (Intent.PRICE,           r"\b(precio\w*|cuesta\w*|cuanto vale\w*|costo\w*)\b"),
         (Intent.AVAILABILITY,    r"\b(stock|disponib\w*|agotad\w*|tienen|hay|queda\w*)\b"),
-        (Intent.FEATURES,        r"\b(caracteristica\w*|especificacion\w*)\\b|\b(que|cuanta|cuanto)\b.*\b(ram|memoria|procesador|pantalla|almacenamiento|graficos)\b|\b(que tiene|que trae)\b"),
+        (Intent.FEATURES,        r"\b(caracteristica\w*|especificacion\w*)\b|\b(que|cuanta|cuanto)\b.*\b(ram|memoria|procesador|pantalla|almacenamiento|graficos)\b|\b(que tiene|que trae)\b"),
         (Intent.PRODUCT_SEARCH,  r"\b(busco|buscar|buscando|muestra\w*|ver|comprar|laptop\w*|monitor\w*|teclado\w*|mouse|raton|procesador\w*|memoria\w*|ssd|hdd|rtx|gtx|pc|periferico\w*|componente\w*|accesorio\w*|i[3579]|\d+(?:gb|tb|hz)|\d{4})\b"),
     )
 

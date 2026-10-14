@@ -91,6 +91,10 @@ class ChatService:
             return ["Presupuesto de S/ 2500", "Presupuesto de S/ 3500", "Laptops para estudio", "PC Gamer"]
         if intent == Intent.COMPARISON:
             return ["Ver precios", "¿Tienen stock?", "¿Tienen garantía?"]
+        if intent == Intent.BUILD_PC:
+            return ["Ver procesadores", "Ver tarjetas de video", "Ver memorias RAM", "Hablar con asesor"]
+        if intent == Intent.HUMAN_SUPPORT:
+            return ["Ver laptops", "Ver PCs armadas", "Arma tu PC", "Hacer otra consulta"]
         if has_products:
             return ["¿Cuál es el costo de envío?", "¿Tienen garantía?", "¿Cómo se paga?"]
         return ["Laptops", "PCs armadas", "Procesadores", "Monitores"]
@@ -489,6 +493,31 @@ class ChatService:
                 resolved=True,
                 products=[],
                 quick_replies=["Ver procesadores", "Ver GPUs", "Ver memorias RAM", "Ver precios"],
+            )
+            self._save_turn_to_db(session_id, clean_message, resp, start_time, user_id)
+            return resp
+
+        # ── 3b. Asesor humano / WhatsApp ──────────────────────────────────────
+        if intent == Intent.HUMAN_SUPPORT:
+            from urllib.parse import quote
+            from app.core.config import settings
+            phone = settings.WHATSAPP_NUMBER
+            default_text = quote("Hola Eagle Gaming Perú, estuve consultando en la web y deseo comunicarme con un asesor.")
+            wa_link = f"https://wa.me/{phone}?text={default_text}"
+            support_msg = (
+                f"¡Con gusto te comunico con un asesor humano! 👨‍💻💬\n\n"
+                f"Puedes escribir directamente a nuestro WhatsApp oficial al **986 638 034**:\n"
+                f"👉 [Iniciar chat en WhatsApp]({wa_link})\n\n"
+                f"Nuestro horario de atención es de Lunes a Sábado de 9:00 am a 7:00 pm. "
+                f"¿O prefieres que te ayude a buscar algún producto mientras tanto? 😊"
+            )
+            self.context_service.add_turn(session_id, "assistant", support_msg)
+            resp = ChatResponse(
+                message=support_msg,
+                intent=Intent.HUMAN_SUPPORT.value,
+                resolved=True,
+                products=[],
+                quick_replies=self._generate_quick_replies(Intent.HUMAN_SUPPORT, False),
             )
             self._save_turn_to_db(session_id, clean_message, resp, start_time, user_id)
             return resp

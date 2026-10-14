@@ -59,3 +59,39 @@ class ChatResponse(BaseModel):
     products: List[ProductSummary] = []
     quick_replies: List[str] = []
     response_time_ms: Optional[float] = None  # Métrica clave para el Objetivo 4 de la tesis
+
+
+class FeedbackRequest(BaseModel):
+    session_id: str
+    rating: int  # 1 a 5 estrellas
+    comment: Optional[str] = None
+    user_id: Optional[str] = None
+
+    @field_validator("rating")
+    @classmethod
+    def rating_in_range(cls, v: int) -> int:
+        if v < 1 or v > 5:
+            raise ValueError("La calificación debe estar entre 1 y 5 estrellas.")
+        return v
+
+    @field_validator("comment")
+    @classmethod
+    def comment_max_len(cls, v: Optional[str]) -> Optional[str]:
+        if v and len(v.strip()) > 300:
+            raise ValueError("El comentario no puede superar 300 caracteres.")
+        return v.strip() if v else None
+
+    @field_validator("session_id")
+    @classmethod
+    def session_id_valid(cls, v: str) -> str:
+        v = v.strip()
+        if not _SESSION_ID_RE.match(v):
+            raise ValueError("session_id inválido.")
+        return v
+
+
+class FeedbackResponse(BaseModel):
+    status: str
+    message: str
+    session_id: str
+    rating: int

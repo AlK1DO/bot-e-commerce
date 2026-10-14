@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from app.schemas.chat import ChatRequest, ChatResponse
+from app.schemas.chat import ChatRequest, ChatResponse, FeedbackRequest, FeedbackResponse
 from app.services.chat_service import ChatService
 from app.repositories.conversation_repository import ConversationRepository
 
@@ -49,3 +49,29 @@ def get_history(request: Request, session_id: str, limit: int = 50):
         "count": len(messages),
         "messages": messages,
     }
+
+
+@router.post("/feedback", response_model=FeedbackResponse)
+@limiter.limit("10/minute")
+def submit_feedback(request: Request, body: FeedbackRequest):
+    """Registra la calificación de satisfacción del cliente (1 a 5 estrellas).
+    Permite evaluar el indicador de 'satisfacción de los usuarios' del
+    Objetivo Específico 4 de la tesis.
+    """
+    success = conversation_repo.save_feedback(
+        session_id=body.session_id,
+        rating=body.rating,
+        comment=body.comment,
+        user_id=body.user_id,
+    )
+    if not success:
+        raise HTTPException(
+            status_code=500,
+            detail="No se pudo registrar la calificación en la base de datos."
+        )
+    return FeedbackResponse(
+        status="success",
+        message="¡Muchas gracias por calificar la atención!",
+        session_id=body.session_id,
+        rating=body.rating,
+    )

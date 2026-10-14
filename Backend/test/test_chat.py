@@ -181,5 +181,101 @@ class ChatTests(unittest.TestCase):
             self.assertEqual(response.status_code, 400)
 
 
+    def test_human_support_intent_and_response(self):
+        """Verifica que solicitudes de asesor humano o WhatsApp se detecten y respondan con el número 986638034."""
+        from app.services.chat_service import ChatService
+        service = IntentService()
+        phrases = [
+            "quiero hablar con un asesor",
+            "pásame con un humano",
+            "comunicarme con una persona",
+            "cuál es el número de whatsapp",
+            "atención al cliente soporte",
+        ]
+        for phrase in phrases:
+            with self.subTest(phrase=phrase):
+                self.assertEqual(service.detect_intent(phrase), "asesor_humano")
+
+        chat = ChatService(Mock())
+        response = asyncio.run(chat.process_message("quiero hablar con un asesor"))
+        self.assertEqual(response.intent, "asesor_humano")
+        self.assertTrue(response.resolved)
+        self.assertIn("986 638 034", response.message)
+        self.assertIn("wa.me/51986638034", response.message)
+
+    def test_build_pc_intent_and_response(self):
+        """Verifica que solicitudes de armar PC redirijan a la sección /arma-tu-pc."""
+        from app.services.chat_service import ChatService
+        service = IntentService()
+        phrases = [
+            "cómo armar mi pc",
+            "quiero armar una pc",
+            "arma tu pc",
+            "cómo configuro una pc personalizada",
+        ]
+        for phrase in phrases:
+            with self.subTest(phrase=phrase):
+                self.assertEqual(service.detect_intent(phrase), "armar_pc")
+
+        chat = ChatService(Mock())
+        response = asyncio.run(chat.process_message("cómo armar mi pc gamer"))
+        self.assertEqual(response.intent, "armar_pc")
+        self.assertTrue(response.resolved)
+        self.assertIn("/arma-tu-pc", response.message)
+
+    def test_feedback_endpoint(self):
+        """Verifica que POST /api/chat/feedback guarde calificaciones y valide rango 1-5."""
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from app.api.chat_routes import router as chat_router
+
+        app = FastAPI()
+        app.include_router(chat_router)
+
+        with patch(
+            'app.api.chat_routes.conversation_repo.save_feedback',
+            return_value=True
+        ), TestClient(app) as client:
+            # Calificación válida 5 estrellas
+            res = client.post('/api/chat/feedback', json={
+                "session_id": "sess-test-1",
+                "rating": 5,
+                "comment": "Excelente atención de Eli"
+            })
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json()["status"], "success")
+            self.assertEqual(res.json()["rating"], 5)
+
+            # Calificación inválida (fuera de rango 1-5)
+            res_bad = client.post('/api/chat/feedback', json={
+                "session_id": "sess-test-1",
+                "rating": 6
+            })
+            self.assertEqual(res_bad.status_code, 422)
+
+    def test_analytics_export_and_auth(self):
+        """Verifica la exportación CSV y la autenticación de administrador."""
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from app.api.analytics_routes import router as analytics_router
+
+        app = FastAPI()
+        app.include_router(analytics_router)
+
+        with patch(
+            'app.api.analytics_routes.conversation_repo.export_metrics_csv',
+            return_value="session_id,timestamp,intent\nsess-1,2026-10-14,precio"
+        ), TestClient(app) as client:
+            # Sin autenticación debe fallar 401
+            res_no_auth = client.get('/api/analytics/export')
+            self.assertEqual(res_no_auth.status_code, 401)
+
+            # Con API key válida debe responder CSV
+            res_auth = client.get('/api/analytics/export?api_key=dev-only')
+            self.assertEqual(res_auth.status_code, 200)
+            self.assertIn("text/csv", res_auth.headers["content-type"])
+            self.assertIn("sess-1", res_auth.text)
+
+
 if __name__ == '__main__':
     unittest.main()
