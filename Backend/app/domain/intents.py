@@ -9,5 +9,6 @@ class Intent(StrEnum):
     WARRANTY = "garantia"
     COMMERCIAL_INFO = "informacion_comercial"
     RECOMMENDATION = "recomendacion"
+    COMPARISON = "comparacion"
     PRODUCT_SEARCH = "buscar_producto"
     UNKNOWN = "desconocida"

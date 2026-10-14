@@ -35,9 +35,9 @@ class IntentService:
         return " ".join(word for word in text.split() if word not in stopwords)
 
     # Una intención principal por mensaje. El orden resuelve consultas mixtas.
-    # Las consultas específicas tienen prioridad sobre buscar un producto.
     RULES = (
         (Intent.COMMERCIAL_INFO, r"\b(envio\w*|despacho\w*|delivery|recojo\w*|retiro|horario\w*|ubicacion\w*|direccion\w*|sector|paqueteria\w*|courier|dni|mercado libre|olva|flex)\b"),
+        (Intent.COMPARISON, r"\b(compara\w*|diferencia\w*|vs|versus)\b|\bcual es mejor\b|\bque me conviene mas\b"),
         (Intent.WARRANTY, r"\b(garantia|garantias)\b"),
         (Intent.RECOMMENDATION, r"\b(recomienda\w*|recomendacion\w*|aconseja\w*|presupuesto)\b|\bcual me conviene\b"),
         (Intent.PRICE, r"\b(precio\w*|cuesta\w*|cuanto vale\w*|costo\w*)\b"),

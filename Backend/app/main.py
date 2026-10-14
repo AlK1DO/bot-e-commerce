@@ -5,6 +5,7 @@ from pathlib import Path
 
 from app.api.chat_routes import router as chat_router
 from app.api.product_routes import router as product_router
+from app.api.analytics_routes import router as analytics_router
 from app.core.config import settings
 
 
@@ -24,6 +25,7 @@ app.add_middleware(
 
 app.include_router(chat_router)
 app.include_router(product_router)
+app.include_router(analytics_router)
 app.mount('/preview', StaticFiles(directory=Path(__file__).resolve().parent.parent / 'preview', html=True), name='preview')
 
 

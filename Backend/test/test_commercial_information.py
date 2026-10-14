@@ -1,5 +1,6 @@
+import asyncio
 import unittest
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 from app.services.chat_service import ChatService
 
@@ -7,6 +8,7 @@ from app.services.chat_service import ChatService
 class CommercialInformationTests(unittest.TestCase):
     def setUp(self):
         self.llm = Mock()
+        self.llm.interpret = AsyncMock(return_value=None)
         self.chat = ChatService(product_service=Mock(), llm_service=self.llm)
 
     def test_commercial_questions_do_not_use_gemini_or_catalog(self):
@@ -18,7 +20,7 @@ class CommercialInformationTests(unittest.TestCase):
         }
         for message, expected in cases.items():
             with self.subTest(message=message):
-                response = self.chat.process_message(message)
+                response = asyncio.run(self.chat.process_message(message))
                 self.assertEqual(response.intent, "informacion_comercial")
                 self.assertIn(expected, response.message)
                 self.assertEqual(response.products, [])
@@ -26,8 +28,8 @@ class CommercialInformationTests(unittest.TestCase):
         self.chat.product_service.search_products.assert_not_called()
 
     def test_unconfirmed_details_are_not_presented_as_final_policy(self):
-        payment = self.chat.process_message("¿Cómo se paga?")
-        location = self.chat.process_message("¿Dónde queda la tienda?")
+        payment = asyncio.run(self.chat.process_message("¿Cómo se paga?"))
+        location = asyncio.run(self.chat.process_message("¿Dónde queda la tienda?"))
         self.assertFalse(payment.resolved)
         self.assertIn("necesitan confirmación", payment.message)
         self.assertFalse(location.resolved)

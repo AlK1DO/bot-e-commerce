@@ -11,6 +11,7 @@ class Settings:
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
     GEMINI_MODEL = os.getenv("GEMINI_MODEL", "").strip()
     GEMINI_TIMEOUT_SECONDS = float(os.getenv("GEMINI_TIMEOUT_SECONDS", "8"))
+    CATALOG_TTL_SECONDS = int(os.getenv("CATALOG_TTL_SECONDS", "900"))
 
     APP_NAME = os.getenv(
         "APP_NAME",

@@ -1,5 +1,6 @@
+import asyncio
 import unittest
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 from app.ai.intent_service import IntentService
 from app.domain.search_normalizer import matches_search
@@ -25,8 +26,8 @@ class PCSearchTests(unittest.TestCase):
         catalog, llm = Mock(), Mock()
         product = {'id': '1', 'titulo': 'COMPUTADORA PC INTEL I5', 'categoria': 'PC COMPLETO'}
         catalog.search_products.side_effect = lambda filters: [product] if matches_search(product, filters.texto) else []
-        llm.interpret.return_value = None
-        response = ChatService(catalog, llm).process_message('tienen pc armadas?')
+        llm.interpret = AsyncMock(return_value=None)
+        response = asyncio.run(ChatService(catalog, llm).process_message('tienen pc armadas?'))
         self.assertEqual(len(response.products), 1)
         self.assertIsNone(response.products[0].stock)
 

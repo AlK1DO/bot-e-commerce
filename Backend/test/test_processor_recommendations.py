@@ -1,5 +1,6 @@
+import asyncio
 import unittest
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 from app.ai.llm_service import Interpretation
 from app.domain.intents import Intent
@@ -16,8 +17,8 @@ class ProcessorRecommendationTests(unittest.TestCase):
         ]
         for intent in [Intent.RECOMMENDATION, Intent.PRODUCT_SEARCH]:
             llm = Mock()
-            llm.interpret.return_value = Interpretation(intent=intent, query='procesador juego')
-            result = ChatService(catalog, llm).process_message('un procesador para juego')
+            llm.interpret = AsyncMock(return_value=Interpretation(intent=intent, query='procesador juego'))
+            result = asyncio.run(ChatService(catalog, llm).process_message('un procesador para juego'))
             self.assertEqual([p.id for p in result.products], ['cpu'])
             self.assertEqual(result.intent, 'recomendacion')
             self.assertFalse(result.resolved)
@@ -27,8 +28,8 @@ class ProcessorRecommendationTests(unittest.TestCase):
     def test_local_fallback_and_no_candidates(self):
         catalog, llm = Mock(), Mock()
         catalog.search_products.return_value = []
-        llm.interpret.return_value = None
-        result = ChatService(catalog, llm).process_message('procesador para jugar')
+        llm.interpret = AsyncMock(return_value=None)
+        result = asyncio.run(ChatService(catalog, llm).process_message('procesador para jugar'))
         self.assertEqual(result.intent, 'recomendacion')
         self.assertFalse(result.resolved)
         self.assertIn('No encontré', result.message)
@@ -36,6 +37,7 @@ class ProcessorRecommendationTests(unittest.TestCase):
     def test_availability_question_about_gaming_processors_is_a_recommendation(self):
         catalog, llm = Mock(), Mock()
         catalog.search_products.return_value = []
-        result = ChatService(catalog, llm).process_message('tienes procesadores para juegos?')
+        llm.interpret = AsyncMock(return_value=None)
+        result = asyncio.run(ChatService(catalog, llm).process_message('tienes procesadores para juegos?'))
         self.assertEqual(result.intent, 'recomendacion')
         llm.interpret.assert_not_called()

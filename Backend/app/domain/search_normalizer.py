@@ -12,6 +12,7 @@ COMMON_TERMS = (
     "memoria", "monitor", "mouse", "pago", "pantalla", "paqueteria",
     "periferico", "precio", "procesador", "provincia", "recojo", "ram",
     "stock", "tarjeta", "teclado", "tiene", "tienen", "tienes", "ubicacion",
+    "video", "fuente", "gabinete", "auricular", "audifono",
 )
 
 
@@ -33,41 +34,41 @@ def normalize_search(value: object) -> str:
         "pc completa", text,
     )
     text = re.sub(r"\b(?:intel\s+)?(?:core\s+)?(i[3579])\b", r"\1", text)
+    text = re.sub(r"\b(?:amd\s+)?(?:ryzen\s+)?(r[3579]|ryzen\s*[3579])\b", r"ryzen", text)
     text = re.sub(r"\b(\d+)\s*(?:gb\s*)?(?:de\s+)?ram\b", r"\1gb", text)
     text = re.sub(r"\bram\s+(\d+)\s*(?:gb\b)?", r"\1gb", text)
     text = re.sub(r"\b(\d+)\s+(gb|tb|hz)\b", r"\1\2", text)
     text = re.sub(r"\b(rtx|gtx)\s*(\d{3,4})\b", r"\1 \2", text)
+    text = re.sub(r"\brx\s*(\d{4})\b", r"rx \1", text)
     text = re.sub(r"\blaptops?\b", "laptop", text)
     text = re.sub(r"\bmonitores\b", "monitor", text)
     text = re.sub(r"\bprocesadores\b", "procesador", text)
     text = re.sub(r"\bteclados\b", "teclado", text)
+    text = re.sub(r"\bmouses?\b|\bratones?\b", "mouse", text)
+    text = re.sub(r"\baudifonos?\b|\bauriculares?\b|\bheadsets?\b", "audifono", text)
     text = re.sub(r"\bperifericos\b", "periferico", text)
     return " ".join(re.findall(r"[a-z0-9]+", text))
 
 
 def _fields_for(term: str) -> tuple[str, ...]:
-    if re.fullmatch(r"(?:rtx|gtx)(?: \d{3,4})?|\d{4}", term):
+    if re.fullmatch(r"(?:rtx|gtx|rx)(?: \d{3,4})?|\d{4}", term):
         return ("tarjeta_de_video", "graficos", "titulo")
-    if re.fullmatch(r"i[3579]", term):
+    if re.fullmatch(r"i[3579]|ryzen", term):
         return ("procesador", "titulo")
     if re.fullmatch(r"\d+gb", term):
         return ("memoria_ram", "titulo")
-    if re.fullmatch(r"\d+tb", term) or term in {"ssd", "hdd"}:
+    if re.fullmatch(r"\d+tb", term) or term in {"ssd", "hdd", "nvme"}:
         return ("almacenamiento", "titulo")
     if re.fullmatch(r"\d+hz", term):
         return ("pantalla", "titulo")
-    if term in {"laptop", "monitor"}:
+    if term in {"laptop", "monitor", "teclado", "mouse", "audifono", "procesador"}:
         return ("categoria", "titulo")
     return ("titulo", "marca", "modelo", "categoria")
 
 
 def matches_search(product: dict, query: str) -> bool:
-    """Exige todos los términos; nunca consulta descripciones comerciales.
-
-    RTX + modelo se mantiene como frase para no mezclar modelos distintos.
-    Las cantidades GB sin contexto se interpretan como RAM en esta fase.
-    """
-    terms = re.findall(r"pc completa|(?:rtx|gtx) \d{3,4}|[a-z0-9]+", normalize_search(query))
+    """Exige todos los términos; nunca consulta descripciones comerciales."""
+    terms = re.findall(r"pc completa|(?:rtx|gtx|rx) \d{3,4}|[a-z0-9]+", normalize_search(query))
     for term in terms:
         if term == "pc completa":
             category = normalize_search(product.get("categoria"))
@@ -81,6 +82,7 @@ def matches_search(product: dict, query: str) -> bool:
         if not any(
             re.search(pattern, normalize_search(product.get(field)))
             for field in _fields_for(term)
+            if product.get(field) is not None
         ):
             return False
     return True

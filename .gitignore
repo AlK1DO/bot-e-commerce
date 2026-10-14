@@ -9,6 +9,11 @@ __pycache__/
 
 .pytest_cache/
 
-credentials/firebase-service-account.json
 .mypy_cache/
 .pytest_cache/
+Backend/credentials/
+*.json
+
+preview/
+
+test/
