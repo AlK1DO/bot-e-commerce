@@ -31,11 +31,27 @@ class IntentService:
         return bool(_INJECTION_PATTERNS.search(message))
 
     def extract_product_query(self, message: str) -> str:
-        """Retira frases de consulta; conserva marca, modelo y términos técnicos."""
+        """Retira frases de consulta y relleno conversacional; conserva marca, modelo y términos técnicos."""
         text = normalize_search(message)
         text = re.sub(
             r"\b(?:cuanto cuesta|cuanto vale|que precio tiene|que garantia tiene"
             r"|que caracteristicas tiene|que especificaciones tiene)\b",
+            " ",
+            text,
+        )
+        # Limpiar modismos y frases de relleno conversacional ("en sí", "ya tengo la compu pero busco...")
+        text = re.sub(
+            r"\b(?:en\s+si|en\s+realidad|la\s+verdad|bueno|mira|oye|por\s+cierto)\b",
+            " ",
+            text,
+        )
+        text = re.sub(
+            r"\b(?:ya\s+)?tengo\s+(?:la\s+|una\s+|mi\s+)?(?:compu|computadora|pc|laptop|equipo|maquina|placa)\b",
+            " ",
+            text,
+        )
+        text = re.sub(
+            r"\b(?:pero|sino\s+que|solo|solamente)\s+(?:busco|quiero|necesito|deseo)\b",
             " ",
             text,
         )
@@ -50,6 +66,7 @@ class IntentService:
             "garantia", "caracteristicas", "especificaciones", "que", "es",
             "esta", "este", "producto", "ver",
             "juego", "juegos", "jugar", "gaming", "gamer",
+            "si", "ya", "pero", "solo", "solamente", "actualmente", "tambien", "pues", "bien",
         }
         return " ".join(word for word in text.split() if word not in stopwords)
 

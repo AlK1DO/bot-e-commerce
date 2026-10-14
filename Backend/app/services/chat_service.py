@@ -346,7 +346,7 @@ class ChatService:
 
         return None, None
 
-    def _recommend_for_context(self, message: str, session_id: str | None) -> ChatResponse:
+    def _recommend_for_context(self, message: str, session_id: str | None) -> ChatResponse | None:
         current = self.context_service.get_recommendation(session_id)
         choice = self._recommendation_choice(message) or (current.product_choice if current else None)
         budget = self._recommendation_budget(message) or (current.budget if current else None)
@@ -365,6 +365,14 @@ class ChatService:
                 quick_replies=["Prefiero Laptop", "Prefiero PC Gamer"],
             )
         if not context.product_choice:
+            # Si el usuario preguntó por una categoría concreta (monitor, teclado, gpu, etc.),
+            # no asumir laptop/pc; permitir que continúe a búsqueda directa en catálogo
+            other_cat = re.search(
+                r"\b(monitor\w*|pantalla\w*|teclado\w*|mouse|raton\w*|auricular\w*|headset\w*|tarjeta\s+de\s+video|gpu|fuente\w*|memoria\w*|ram|ssd|disco\w*)\b",
+                normalize_search(message),
+            )
+            if other_cat:
+                return None
             return ChatResponse(
                 message="¡Con gusto te ayudo! ¿Estás buscando laptop o PC? Y si me dices tu presupuesto, puedo afinar las opciones 😊",
                 intent=Intent.RECOMMENDATION.value, resolved=False, products=[],
@@ -528,6 +536,17 @@ class ChatService:
             self._save_turn_to_db(session_id, clean_message, resp, start_time, user_id)
             return resp
 
+        # ── 3c. Procesadores específicos ──────────────────────────────────────
+        if is_processor_request(clean_message) and (
+            intent in {Intent.RECOMMENDATION, Intent.PRODUCT_SEARCH, Intent.UNKNOWN}
+            or re.search(r'\b(juego\w*|jugar|gaming|gamer|software|trabajo|estudio)\b', clean_message.lower())
+        ):
+            resp = self._recommend_processors(clean_message)
+            self.context_service.add_turn(session_id, "assistant", resp.message)
+            self._save_turn_to_db(session_id, clean_message, resp, start_time, user_id)
+            return resp
+
+        # ── 3d. Recomendaciones contextuales de laptops/PCs ───────────────────
         if intent == Intent.RECOMMENDATION or (
             current_context and (
                 self._recommendation_choice(clean_message) is not None
@@ -535,9 +554,10 @@ class ChatService:
             )
         ):
             resp = self._recommend_for_context(clean_message, session_id)
-            self.context_service.add_turn(session_id, "assistant", resp.message)
-            self._save_turn_to_db(session_id, clean_message, resp, start_time, user_id)
-            return resp
+            if resp is not None:
+                self.context_service.add_turn(session_id, "assistant", resp.message)
+                self._save_turn_to_db(session_id, clean_message, resp, start_time, user_id)
+                return resp
 
         # ── 4. Gemini para intenciones desconocidas (con historial) ───────────
         interpretation = (
@@ -549,15 +569,6 @@ class ChatService:
         if interpretation is not None:
             intent = interpretation.intent
             query = interpretation.query.strip()
-
-        if is_processor_request(clean_message) and (
-            intent == Intent.RECOMMENDATION
-            or re.search(r'\b(juego\w*|jugar|gaming|gamer)\b', clean_message.lower())
-        ):
-            resp = self._recommend_processors(clean_message)
-            self.context_service.add_turn(session_id, "assistant", resp.message)
-            self._save_turn_to_db(session_id, clean_message, resp, start_time, user_id)
-            return resp
 
         if intent in {Intent.PRICE, Intent.AVAILABILITY, Intent.FEATURES, Intent.WARRANTY, Intent.PRODUCT_SEARCH}:
             resp = await self._catalog_response(
