@@ -276,6 +276,39 @@ class ChatTests(unittest.TestCase):
             self.assertIn("text/csv", res_auth.headers["content-type"])
             self.assertIn("sess-1", res_auth.text)
 
+    def test_xss_sanitization(self):
+        """Verifica que etiquetas HTML maliciosas sean filtradas del mensaje."""
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from app.api.chat_routes import router as chat_router
+
+        app = FastAPI()
+        app.include_router(chat_router)
+
+        with TestClient(app) as client:
+            # Mensaje que solo tiene etiquetas HTML queda vacío al sanitizarse y es rechazado con 422
+            res_only_tags = client.post('/api/chat', json={"message": "<script></script>"})
+            self.assertEqual(res_only_tags.status_code, 422)
+
+            # Mensaje mixto con HTML debe eliminar los tags HTML y procesar el texto limpio
+            res_mixed = client.post('/api/chat', json={"message": "<h1>hola</h1>"})
+            self.assertEqual(res_mixed.status_code, 200)
+            self.assertEqual(res_mixed.json()["intent"], "saludo")
+
+    def test_security_headers(self):
+        """Verifica que las cabeceras HTTP de seguridad se incluyan en las respuestas."""
+        from fastapi.testclient import TestClient
+        from app.main import app
+
+        with TestClient(app) as client:
+            res = client.get('/')
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.headers.get("X-Content-Type-Options"), "nosniff")
+            self.assertEqual(res.headers.get("X-Frame-Options"), "DENY")
+            self.assertEqual(res.headers.get("X-XSS-Protection"), "1; mode=block")
+            self.assertEqual(res.headers.get("Referrer-Policy"), "strict-origin-when-cross-origin")
+            self.assertEqual(res.headers.get("Server"), "EagleGaming-API")
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -11,6 +11,9 @@ MESSAGE_MAX_LENGTH = 500
 # Previene path traversal y caracteres raros en IDs de Firestore.
 _SESSION_ID_RE = re.compile(r"^[a-zA-Z0-9_\-]{1,128}$")
 
+# Regex para remover etiquetas HTML y prevenir inyección de scripts (Stored/Reflected XSS)
+_HTML_TAGS_RE = re.compile(r"<[^>]+>")
+
 
 class ProductSummary(BaseModel):
     id: str
@@ -37,7 +40,11 @@ class ChatRequest(BaseModel):
             raise ValueError(
                 f"El mensaje es demasiado largo. Máximo {MESSAGE_MAX_LENGTH} caracteres."
             )
-        return stripped
+        # Sanitización contra XSS: elimina etiquetas HTML como <script>, <iframe>, <img>, etc.
+        sanitized = re.sub(r"\s+", " ", _HTML_TAGS_RE.sub(" ", stripped)).strip()
+        if not sanitized:
+            raise ValueError("El mensaje no es válido.")
+        return sanitized
 
     @field_validator("session_id")
     @classmethod
@@ -77,9 +84,12 @@ class FeedbackRequest(BaseModel):
     @field_validator("comment")
     @classmethod
     def comment_max_len(cls, v: Optional[str]) -> Optional[str]:
-        if v and len(v.strip()) > 300:
-            raise ValueError("El comentario no puede superar 300 caracteres.")
-        return v.strip() if v else None
+        if v:
+            clean = _HTML_TAGS_RE.sub("", v.strip()).strip()
+            if len(clean) > 300:
+                raise ValueError("El comentario no puede superar 300 caracteres.")
+            return clean or None
+        return None
 
     @field_validator("session_id")
     @classmethod
