@@ -98,3 +98,34 @@ class LLMService:
                 "No se pudo generar respuesta con IA; usando fallback estructurado."
             )
             return None
+
+    async def answer_customer_query(
+        self,
+        user_message: str,
+        history: List[dict] | None = None,
+        products_context: list[dict] | None = None,
+    ) -> str | None:
+        """Responde dudas técnicas, compatibilidad y consultas conversacionales
+        como Eli de Eagle Gaming usando Gemini.
+        """
+        if self.provider is None and settings.AI_PROVIDER == "none":
+            return None
+        try:
+            provider = self._get_provider()
+            system_prompt = PromptService.customer_advisor_prompt(
+                products=products_context or [],
+                history=history,
+            )
+            res = provider.generate_text(
+                system=system_prompt,
+                message=user_message,
+            )
+            response_text = await res if inspect.isawaitable(res) else res
+            if isinstance(response_text, str) and response_text.strip():
+                return response_text.strip()
+            return None
+        except Exception:
+            logging.getLogger(__name__).warning(
+                "No se pudo generar respuesta conversacional con IA."
+            )
+            return None

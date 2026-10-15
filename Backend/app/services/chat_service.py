@@ -11,6 +11,7 @@ from app.repositories.conversation_repository import ConversationRepository
 from app.schemas.chat import ChatResponse, ProductSummary
 from app.services.commercial_service import CommercialService
 from app.services.conversation_context_service import ConversationContextService
+from app.services.hardware_advisor_service import HardwareAdvisorService
 from app.services.recommendation_service import RecommendationService
 
 
@@ -69,6 +70,7 @@ class ChatService:
         self.product_service = product_service
         self.llm_service = llm_service if llm_service is not None else LLMService()
         self.commercial_service = CommercialService()
+        self.hardware_advisor = HardwareAdvisorService()
         self.context_service = context_service or ConversationContextService()
         self.conversation_repo = conversation_repo or ConversationRepository()
 
@@ -603,7 +605,31 @@ class ChatService:
             self._save_turn_to_db(session_id, clean_message, resp, start_time, user_id)
             return resp
 
-        # ── 3c. Recomendación o comparativa de productos recién mostrados ─────
+        # ── 3c. Asesoramiento técnico / compatibilidad (local, sin IA) ───────────
+        # Solo si no hay un flujo de recomendación activo (laptop/PC + presupuesto)
+        _in_rec_flow = current_context and current_context.product_choice
+        if not _in_rec_flow and self.hardware_advisor.is_technical_or_hardware_query(clean_message):
+            self._ensure_product_service()
+            last_prods = self.context_service.get_last_products(session_id)
+            catalog = last_prods or self.product_service.search_products(ProductFilters())
+            result = self.hardware_advisor.advise(clean_message, catalog, history=history)
+            if result is not None:
+                adv_msg, adv_prods = result
+                summaries = [self._to_product_summary(p) for p in adv_prods]
+                if session_id and adv_prods:
+                    self.context_service.set_last_products(session_id, adv_prods)
+                self.context_service.add_turn(session_id, "assistant", adv_msg)
+                resp = ChatResponse(
+                    message=adv_msg,
+                    intent=Intent.RECOMMENDATION.value,
+                    resolved=True,
+                    products=summaries,
+                    quick_replies=["¿Cuánto cuesta?", "¿Tienen stock?", "¿Tiene garantía?", "Hablar con asesor"],
+                )
+                self._save_turn_to_db(session_id, clean_message, resp, start_time, user_id)
+                return resp
+
+        # ── 3d. Recomendación o comparativa de productos recién mostrados ─────
         last_products = self.context_service.get_last_products(session_id)
         is_follow_up = bool(re.search(
             r"\b(de\s+(?:esos|estos|ellos)|cual\s+(?:me\s+)?(?:recomiendas|conviene|es\s+mejor)|cual\s+elijo|entre\s+(?:esos|estos)|diferencia\s+entre\s+(?:esos|estos))\b",
@@ -663,7 +689,30 @@ class ChatService:
             self._save_turn_to_db(session_id, clean_message, resp, start_time, user_id)
             return resp
 
-        # ── 5. Respuestas por defecto ──────────────────────────────────────────
+        # ── 5. Gemini conversacional para UNKNOWN (Eli responde cualquier duda) ─
+        if intent == Intent.UNKNOWN:
+            last_prods = self.context_service.get_last_products(session_id)
+            try:
+                ai_resp = await self.llm_service.answer_customer_query(
+                    user_message=clean_message,
+                    history=history,
+                    products_context=last_prods or [],
+                )
+                if ai_resp:
+                    self.context_service.add_turn(session_id, "assistant", ai_resp)
+                    resp = ChatResponse(
+                        message=ai_resp,
+                        intent=Intent.UNKNOWN.value,
+                        resolved=True,
+                        products=[],
+                        quick_replies=["Ver productos", "Hablar con asesor", "Laptops", "PCs Armadas"],
+                    )
+                    self._save_turn_to_db(session_id, clean_message, resp, start_time, user_id)
+                    return resp
+            except Exception:
+                pass
+
+        # ── 6. Respuestas por defecto ──────────────────────────────────────────
         responses = {
             Intent.GREETING: (
                 "¡Hola! Soy Eli, tu asesora de Eagle Gaming 👋 "
@@ -690,6 +739,7 @@ class ChatService:
         )
         self._save_turn_to_db(session_id, clean_message, resp, start_time, user_id)
         return resp
+
 
     def _save_turn_to_db(
         self,

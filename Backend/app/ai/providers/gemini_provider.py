@@ -27,6 +27,7 @@ class GeminiProvider(BaseProvider):
                             "responseMimeType": "application/json",
                             "responseJsonSchema": schema,
                             "maxOutputTokens": 2048,
+                            "thinkingConfig": {"thinkingBudget": 0},
                         },
                     },
                 )
@@ -58,6 +59,7 @@ class GeminiProvider(BaseProvider):
                         "generationConfig": {
                             "temperature": 0.7,
                             "maxOutputTokens": 1024,
+                            "thinkingConfig": {"thinkingBudget": 0},
                         },
                     },
                 )
